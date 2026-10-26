@@ -3,10 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using TicketHub.Application.Common.Exceptions;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Domain.Entities;
+using TicketHub.Domain.Enums;
 
 namespace TicketHub.Application.Features.Events.GetEventSeatMap;
 
-public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext)
+public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext, TimeProvider timeProvider)
     : IRequestHandler<GetEventSeatMapQuery, EventSeatMapResponse>
 {
     public async Task<EventSeatMapResponse> Handle(GetEventSeatMapQuery request, CancellationToken cancellationToken)
@@ -24,11 +25,23 @@ public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext)
             .ToListAsync(cancellationToken);
 
         var sectionIds = sections.Select(s => s.SectionId).ToList();
-        var seatsBySection = (await dbContext.Seats
-                .AsNoTracking()
-                .Where(s => sectionIds.Contains(s.SectionId))
-                .Select(s => new { s.SectionId, Seat = new SeatMapSeatDto(s.Id, s.RowNumber, s.SeatNumber, s.Status) })
-                .ToListAsync(cancellationToken))
+        var seats = await dbContext.Seats
+            .AsNoTracking()
+            .Where(s => sectionIds.Contains(s.SectionId))
+            .Select(s => new { s.Id, s.SectionId, s.RowNumber, s.SeatNumber })
+            .ToListAsync(cancellationToken);
+
+        var seatStatuses = await LoadSeatStatusesAsync(request.EventId, cancellationToken);
+        var seatsBySection = seats
+            .Select(s => new
+            {
+                s.SectionId,
+                Seat = new SeatMapSeatDto(
+                    s.Id,
+                    s.RowNumber,
+                    s.SeatNumber,
+                    seatStatuses.GetValueOrDefault(s.Id, SeatStatus.Available))
+            })
             .ToLookup(s => s.SectionId, s => s.Seat);
 
         var sectionDtos = sections
@@ -46,5 +59,28 @@ public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext)
             .ToList();
 
         return new EventSeatMapResponse(request.EventId, sectionDtos);
+    }
+
+    /// <summary>
+    /// Seat status is per event: Booked if a hold was converted to a booking, Held if a hold is still live,
+    /// otherwise Available (expired-but-unreaped holds count as Available, per BR-04).
+    /// </summary>
+    private async Task<Dictionary<Guid, SeatStatus>> LoadSeatStatusesAsync(Guid eventId, CancellationToken cancellationToken)
+    {
+        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
+
+        var occupied = await dbContext.SeatHolds
+            .AsNoTracking()
+            .Where(h => h.EventId == eventId
+                && (h.Status == HoldStatus.ConvertedToBooking
+                    || (h.Status == HoldStatus.Active && h.HoldExpiresAtUtc > utcNow)))
+            .Select(h => new { h.SeatId, h.Status })
+            .ToListAsync(cancellationToken);
+
+        return occupied
+            .GroupBy(h => h.SeatId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Any(h => h.Status == HoldStatus.ConvertedToBooking) ? SeatStatus.Booked : SeatStatus.Held);
     }
 }

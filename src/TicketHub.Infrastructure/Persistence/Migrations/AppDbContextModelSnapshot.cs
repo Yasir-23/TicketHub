@@ -129,9 +129,6 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("SectionId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -141,6 +138,55 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Seats", (string)null);
+                });
+
+            modelBuilder.Entity("TicketHub.Domain.Entities.SeatHold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("HoldExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("HoldGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SeatId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("HoldGroupId");
+
+                    b.HasIndex("SeatId");
+
+                    b.HasIndex("EventId", "SeatId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SeatHolds_Active")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.HasIndex("Status", "HoldExpiresAtUtc");
+
+                    b.HasIndex("EventId", "CustomerId", "Status");
+
+                    b.ToTable("SeatHolds", (string)null);
                 });
 
             modelBuilder.Entity("TicketHub.Domain.Entities.Section", b =>
@@ -307,6 +353,33 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("TicketHub.Domain.Entities.SeatHold", b =>
+                {
+                    b.HasOne("TicketHub.Domain.Entities.User", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TicketHub.Domain.Entities.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TicketHub.Domain.Entities.Seat", "Seat")
+                        .WithMany()
+                        .HasForeignKey("SeatId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Event");
+
+                    b.Navigation("Seat");
                 });
 
             modelBuilder.Entity("TicketHub.Domain.Entities.Section", b =>

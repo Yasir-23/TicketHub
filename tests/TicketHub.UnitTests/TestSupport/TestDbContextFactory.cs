@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using TicketHub.Infrastructure.Persistence;
 
 namespace TicketHub.UnitTests.TestSupport;
@@ -11,6 +12,8 @@ internal static class TestDbContextFactory
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName ?? Guid.NewGuid().ToString())
+            // The in-memory provider has no transactions; handlers that open one still run correctly.
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         return new AppDbContext(options, new FixedTimeProvider(UtcNow));

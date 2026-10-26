@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using TicketHub.Application.Common.Exceptions;
 using TicketHub.Application.Features.Venues.ConfigureSections;
 using TicketHub.Application.Features.Venues.CreateVenue;
-using TicketHub.Domain.Enums;
 using TicketHub.UnitTests.TestSupport;
 
 namespace TicketHub.UnitTests.Application.Venues;
@@ -41,7 +40,6 @@ public sealed class VenueCommandHandlerTests
 
         var seats = await dbContext.Seats.Where(s => s.SectionId == response.SectionId).ToListAsync();
         seats.Should().HaveCount(40);
-        seats.Should().OnlyContain(s => s.Status == SeatStatus.Available);
         seats.Select(s => (s.RowNumber, s.SeatNumber)).Should().OnlyHaveUniqueItems();
 
         (await dbContext.Venues.SingleAsync()).TotalCapacity.Should().Be(40);

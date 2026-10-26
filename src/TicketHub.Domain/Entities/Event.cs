@@ -77,6 +77,14 @@ public sealed class Event : SoftDeletableEntity
         }
     }
 
+    public void EnsureBookable(DateTime utcNow)
+    {
+        if (HasStarted(utcNow))
+        {
+            throw new PastEventBookingException(Id);
+        }
+    }
+
     public void SetSectionPrice(Guid sectionId, long priceCents, DateTime utcNow)
     {
         EnsureModifiable(utcNow);

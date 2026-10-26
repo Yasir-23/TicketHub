@@ -1,6 +1,5 @@
 using FluentAssertions;
 using TicketHub.Domain.Entities;
-using TicketHub.Domain.Enums;
 using TicketHub.Domain.Exceptions;
 
 namespace TicketHub.UnitTests.Domain;
@@ -17,7 +16,7 @@ public sealed class VenueSeatingTests
         section.Capacity.Should().Be(35);
         section.VenueId.Should().Be(venue.Id);
         section.Seats.Should().HaveCount(35);
-        section.Seats.Should().OnlyContain(s => s.SectionId == section.Id && s.Status == SeatStatus.Available);
+        section.Seats.Should().OnlyContain(s => s.SectionId == section.Id);
         section.Seats.Where(s => s.RowNumber == "A").Select(s => s.SeatNumber)
             .Should().Equal(Enumerable.Range(1, 20));
         section.Seats.Where(s => s.RowNumber == "B").Select(s => s.SeatNumber)

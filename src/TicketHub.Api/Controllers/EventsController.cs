@@ -1,7 +1,10 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TicketHub.Api.Contracts;
+using TicketHub.Api.Extensions;
 using TicketHub.Application.Common.Models;
+using TicketHub.Application.Features.Holds.HoldSeats;
 using TicketHub.Application.Features.Events.CreateEvent;
 using TicketHub.Application.Features.Events.GetEvents;
 using TicketHub.Application.Features.Events.GetEventSeatMap;
@@ -34,6 +37,26 @@ public sealed class EventsController(ISender sender) : ControllerBase
     public async Task<IActionResult> GetEvents([FromQuery] GetEventsQuery query, CancellationToken cancellationToken)
     {
         return Ok(await sender.Send(query, cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/holds")]
+    [Authorize(Roles = nameof(UserRole.Customer))]
+    [ProducesResponseType<HoldSeatsResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> HoldSeats(Guid id, HoldSeatsRequest request, CancellationToken cancellationToken)
+    {
+        if (!User.TryGetUserId(out var customerId))
+        {
+            return Unauthorized();
+        }
+
+        var response = await sender.Send(new HoldSeatsCommand(id, customerId, request.SeatIds), cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 
     [HttpGet("{id:guid}/seat-map")]

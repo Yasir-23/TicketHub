@@ -28,6 +28,7 @@ public static class DependencyInjection
             .ConfigureWarnings(warnings =>
                 warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
         services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
+        services.AddScoped<ICustomerEventLock, PostgresAdvisoryCustomerEventLock>();
 
         services.Configure<AdminSeedOptions>(configuration.GetSection(AdminSeedOptions.SectionName));
 

@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Domain.Common;
 using TicketHub.Domain.Entities;
+using TicketHub.Domain.Exceptions;
+using TicketHub.Infrastructure.Persistence.Configurations;
 
 namespace TicketHub.Infrastructure.Persistence;
 
@@ -20,21 +23,45 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
 
     public DbSet<EventSectionPricing> EventSectionPricings => Set<EventSectionPricing>();
 
+    public DbSet<SeatHold> SeatHolds => Set<SeatHold>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ApplySoftDeletes();
         ApplyAuditTimestamps();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        try
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        catch (DbUpdateException exception) when (IsActiveHoldCollision(exception))
+        {
+            throw new SeatAlreadyHeldException();
+        }
     }
 
-    public override Task<int> SaveChangesAsync(
+    public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
         ApplySoftDeletes();
         ApplyAuditTimestamps();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        try
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch (DbUpdateException exception) when (IsActiveHoldCollision(exception))
+        {
+            throw new SeatAlreadyHeldException();
+        }
     }
+
+    // BR-01: a rival transaction committed an active hold on the same seat first (SDD section 4.6).
+    private static bool IsActiveHoldCollision(DbUpdateException exception) =>
+        exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: SeatHoldConfiguration.ActiveHoldIndexName
+        };
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

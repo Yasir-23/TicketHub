@@ -17,10 +17,6 @@ internal sealed class SeatConfiguration : IEntityTypeConfiguration<Seat>
             .HasMaxLength(SectionConstraints.RowNumberMaxLength)
             .IsRequired();
 
-        builder.Property(s => s.Status)
-            .HasConversion<int>()
-            .IsRequired();
-
         // Npgsql maps a uint row version onto the xmin system column (SDD section 3).
         builder.Property(s => s.RowVersion)
             .IsRowVersion();

@@ -1,8 +1,11 @@
 using TicketHub.Domain.Common;
-using TicketHub.Domain.Enums;
 
 namespace TicketHub.Domain.Entities;
 
+/// <summary>
+/// A physical seat in a venue section. Seats are shared by every event at the venue, so availability is
+/// not stored here: it is derived per event from <see cref="SeatHold"/> records.
+/// </summary>
 public sealed class Seat : BaseEntity
 {
     // Required by EF Core.
@@ -18,8 +21,6 @@ public sealed class Seat : BaseEntity
 
     public int SeatNumber { get; private set; }
 
-    public SeatStatus Status { get; private set; }
-
     /// <summary>
     /// Optimistic concurrency token, mapped to PostgreSQL's xmin system column.
     /// </summary>
@@ -29,7 +30,6 @@ public sealed class Seat : BaseEntity
     {
         SectionId = sectionId,
         RowNumber = rowNumber,
-        SeatNumber = seatNumber,
-        Status = SeatStatus.Available
+        SeatNumber = seatNumber
     };
 }

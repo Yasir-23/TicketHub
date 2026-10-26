@@ -43,6 +43,24 @@ internal sealed class GlobalExceptionHandler(
                 Title = "Not Found",
                 Detail = exception.Message
             },
+            SeatAlreadyHeldException => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Seats unavailable",
+                Detail = exception.Message
+            },
+            TicketLimitExceededException => new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Ticket limit exceeded",
+                Detail = exception.Message
+            },
+            PastEventBookingException => new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Event has already started",
+                Detail = exception.Message
+            },
             DomainException => new ProblemDetails
             {
                 Status = StatusCodes.Status422UnprocessableEntity,
