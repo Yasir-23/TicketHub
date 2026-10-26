@@ -49,6 +49,30 @@ internal sealed class GlobalExceptionHandler(
                 Title = "Seats unavailable",
                 Detail = exception.Message
             },
+            HoldExpiredException => new ProblemDetails
+            {
+                Status = StatusCodes.Status410Gone,
+                Title = "Seat hold expired",
+                Detail = exception.Message
+            },
+            PaymentFailedException => new ProblemDetails
+            {
+                Status = StatusCodes.Status402PaymentRequired,
+                Title = "Payment required",
+                Detail = exception.Message
+            },
+            CancellationCutoffPassedException => new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Cancellation cutoff passed",
+                Detail = exception.Message
+            },
+            MissingIdempotencyKeyException => new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Missing Idempotency-Key",
+                Detail = exception.Message
+            },
             TicketLimitExceededException => new ProblemDetails
             {
                 Status = StatusCodes.Status422UnprocessableEntity,

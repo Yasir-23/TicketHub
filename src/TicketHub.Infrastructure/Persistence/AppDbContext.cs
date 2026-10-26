@@ -25,6 +25,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
 
     public DbSet<SeatHold> SeatHolds => Set<SeatHold>();
 
+    public DbSet<Booking> Bookings => Set<Booking>();
+
+    public DbSet<BookingItem> BookingItems => Set<BookingItem>();
+
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ApplySoftDeletes();

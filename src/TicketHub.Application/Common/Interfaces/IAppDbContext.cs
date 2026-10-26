@@ -20,6 +20,12 @@ public interface IAppDbContext
 
     DbSet<SeatHold> SeatHolds { get; }
 
+    DbSet<Booking> Bookings { get; }
+
+    DbSet<BookingItem> BookingItems { get; }
+
+    DbSet<PaymentTransaction> PaymentTransactions { get; }
+
     /// <summary>Used by handlers that need an explicit transaction (e.g. the seat hold hot path).</summary>
     DatabaseFacade Database { get; }
 

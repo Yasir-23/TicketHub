@@ -29,6 +29,10 @@ public sealed class SeatHold : BaseEntity
 
     public User Customer { get; private set; } = null!;
 
+    public Guid? BookingId { get; private set; }
+
+    public Booking? Booking { get; private set; }
+
     public DateTime HoldExpiresAtUtc { get; private set; }
 
     public HoldStatus Status { get; private set; }
@@ -53,7 +57,23 @@ public sealed class SeatHold : BaseEntity
 
     public void Release() => TransitionFromActive(HoldStatus.Released);
 
+    public void ReleaseBooking()
+    {
+        if (Status != HoldStatus.ConvertedToBooking)
+        {
+            throw new DomainException($"Seat hold '{Id}' cannot move from {Status} to {HoldStatus.Released}.");
+        }
+
+        Status = HoldStatus.Released;
+    }
+
     public void Expire() => TransitionFromActive(HoldStatus.Expired);
+
+    public void ConvertToBooking(Guid bookingId)
+    {
+        TransitionFromActive(HoldStatus.ConvertedToBooking);
+        BookingId = bookingId;
+    }
 
     public void ConvertToBooking() => TransitionFromActive(HoldStatus.ConvertedToBooking);
 

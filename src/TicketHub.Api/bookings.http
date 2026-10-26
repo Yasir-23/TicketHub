@@ -1,0 +1,35 @@
+@baseUrl = http://localhost:5083
+@accessToken = <customer-access-token>
+@holdId = 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+@bookingId = a7b8c9d0-1234-5678-90ab-cdef12345678
+
+### Checkout a held seat group
+POST {{baseUrl}}/api/v1/bookings/checkout
+Authorization: Bearer {{accessToken}}
+Idempotency-Key: 1c029bc6-2113-4fe7-afee-02286f9cb4c8
+Content-Type: application/json
+
+{
+  "holdId": "{{holdId}}",
+  "paymentMethod": "CreditCard",
+  "paymentToken": "tok_visa_valid"
+}
+
+### Checkout error: missing idempotency key
+POST {{baseUrl}}/api/v1/bookings/checkout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "holdId": "{{holdId}}",
+  "paymentMethod": "CreditCard",
+  "paymentToken": "tok_visa_valid"
+}
+
+### Cancel a booking
+POST {{baseUrl}}/api/v1/bookings/{{bookingId}}/cancel
+Authorization: Bearer {{accessToken}}
+
+### List active and cancelled bookings
+GET {{baseUrl}}/api/v1/bookings/my-bookings
+Authorization: Bearer {{accessToken}}

@@ -22,6 +22,87 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("TicketHub.Domain.Entities.Booking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("QrCodePayload")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TicketNumber")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("TotalAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("TicketNumber")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId", "CreatedAtUtc");
+
+                    b.ToTable("Bookings", (string)null);
+                });
+
+            modelBuilder.Entity("TicketHub.Domain.Entities.BookingItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SeatId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("UnitPriceCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeatId");
+
+                    b.HasIndex("BookingId", "SeatId")
+                        .IsUnique();
+
+                    b.ToTable("BookingItems", (string)null);
+                });
+
             modelBuilder.Entity("TicketHub.Domain.Entities.Event", b =>
                 {
                     b.Property<Guid>("Id")
@@ -104,6 +185,46 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                     b.ToTable("EventSectionPricings", (string)null);
                 });
 
+            modelBuilder.Entity("TicketHub.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("BookingId", "CreatedAtUtc");
+
+                    b.ToTable("PaymentTransactions", (string)null);
+                });
+
             modelBuilder.Entity("TicketHub.Domain.Entities.Seat", b =>
                 {
                     b.Property<Guid>("Id")
@@ -145,6 +266,9 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -170,6 +294,8 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
 
                     b.HasIndex("CustomerId");
 
@@ -314,6 +440,44 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                     b.ToTable("Venues", (string)null);
                 });
 
+            modelBuilder.Entity("TicketHub.Domain.Entities.Booking", b =>
+                {
+                    b.HasOne("TicketHub.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TicketHub.Domain.Entities.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TicketHub.Domain.Entities.BookingItem", b =>
+                {
+                    b.HasOne("TicketHub.Domain.Entities.Booking", "Booking")
+                        .WithMany("BookingItems")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TicketHub.Domain.Entities.Seat", "Seat")
+                        .WithMany()
+                        .HasForeignKey("SeatId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Seat");
+                });
+
             modelBuilder.Entity("TicketHub.Domain.Entities.Event", b =>
                 {
                     b.HasOne("TicketHub.Domain.Entities.Venue", "Venue")
@@ -344,6 +508,17 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                     b.Navigation("Section");
                 });
 
+            modelBuilder.Entity("TicketHub.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("TicketHub.Domain.Entities.Booking", "Booking")
+                        .WithMany("PaymentTransactions")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("TicketHub.Domain.Entities.Seat", b =>
                 {
                     b.HasOne("TicketHub.Domain.Entities.Section", "Section")
@@ -357,6 +532,11 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TicketHub.Domain.Entities.SeatHold", b =>
                 {
+                    b.HasOne("TicketHub.Domain.Entities.Booking", "Booking")
+                        .WithMany("SeatHolds")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TicketHub.Domain.Entities.User", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
@@ -375,6 +555,8 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Booking");
+
                     b.Navigation("Customer");
 
                     b.Navigation("Event");
@@ -391,6 +573,15 @@ namespace TicketHub.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Venue");
+                });
+
+            modelBuilder.Entity("TicketHub.Domain.Entities.Booking", b =>
+                {
+                    b.Navigation("BookingItems");
+
+                    b.Navigation("PaymentTransactions");
+
+                    b.Navigation("SeatHolds");
                 });
 
             modelBuilder.Entity("TicketHub.Domain.Entities.Event", b =>

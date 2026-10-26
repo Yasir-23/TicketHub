@@ -48,5 +48,10 @@ internal sealed class SeatHoldConfiguration : IEntityTypeConfiguration<SeatHold>
             .WithMany()
             .HasForeignKey(h => h.CustomerId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(h => h.Booking)
+            .WithMany(b => b.SeatHolds)
+            .HasForeignKey(h => h.BookingId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

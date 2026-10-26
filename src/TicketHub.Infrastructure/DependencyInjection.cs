@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Infrastructure.Authentication;
+using TicketHub.Infrastructure.Payments;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.Infrastructure.Persistence.Seeding;
 
@@ -29,6 +30,22 @@ public static class DependencyInjection
                 warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
         services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
         services.AddScoped<ICustomerEventLock, PostgresAdvisoryCustomerEventLock>();
+        services.AddHttpClient<IPaymentGateway, SimulatedPaymentGateway>(client =>
+            client.BaseAddress = new Uri("https://payments.tickethub.local/"))
+            .ConfigurePrimaryHttpMessageHandler(() => new SimulatedPaymentHandler())
+            .AddStandardResilienceHandler(options =>
+            {
+                options.Retry.MaxRetryAttempts = 3;
+                options.Retry.Delay = TimeSpan.FromMilliseconds(200);
+                options.Retry.BackoffType = Polly.DelayBackoffType.Exponential;
+                options.Retry.UseJitter = true;
+                options.CircuitBreaker.FailureRatio = 0.5;
+                options.CircuitBreaker.MinimumThroughput = 10;
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+                options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(15);
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            });
 
         services.Configure<AdminSeedOptions>(configuration.GetSection(AdminSeedOptions.SectionName));
 
