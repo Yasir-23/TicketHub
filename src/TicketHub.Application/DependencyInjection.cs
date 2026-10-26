@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using TicketHub.Application.Common.Behaviors;
 
 namespace TicketHub.Application;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         });
 
         services.AddValidatorsFromAssembly(assembly, includeInternalTypes: true);
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }

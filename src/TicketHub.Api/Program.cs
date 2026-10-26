@@ -1,6 +1,7 @@
 using TicketHub.Api;
 using TicketHub.Application;
 using TicketHub.Infrastructure;
+using TicketHub.Infrastructure.Persistence.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,7 +31,9 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+await app.Services.SeedAdminUserAsync();
+
+await app.RunAsync();
 
 // Exposed for WebApplicationFactory-based integration tests.
 public partial class Program;

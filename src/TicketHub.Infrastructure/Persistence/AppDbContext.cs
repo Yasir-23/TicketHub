@@ -10,8 +10,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
 {
     public DbSet<User> Users => Set<User>();
 
+    public DbSet<Venue> Venues => Set<Venue>();
+
+    public DbSet<Section> Sections => Set<Section>();
+
+    public DbSet<Seat> Seats => Set<Seat>();
+
+    public DbSet<Event> Events => Set<Event>();
+
+    public DbSet<EventSectionPricing> EventSectionPricings => Set<EventSectionPricing>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        ApplySoftDeletes();
         ApplyAuditTimestamps();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
@@ -20,6 +31,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
+        ApplySoftDeletes();
         ApplyAuditTimestamps();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
@@ -27,6 +39,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+    }
+
+    // BR-08: turn physical deletes of soft-deletable entities into IsDeleted updates.
+    private void ApplySoftDeletes()
+    {
+        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
+
+        foreach (var entry in ChangeTracker.Entries<ISoftDeletable>())
+        {
+            if (entry.State == EntityState.Deleted)
+            {
+                entry.State = EntityState.Modified;
+                entry.Entity.MarkDeleted(utcNow);
+            }
+        }
     }
 
     private void ApplyAuditTimestamps()

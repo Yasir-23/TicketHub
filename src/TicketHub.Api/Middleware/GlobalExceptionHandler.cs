@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using TicketHub.Application.Common.Exceptions;
+using TicketHub.Domain.Exceptions;
 
 namespace TicketHub.Api.Middleware;
 
@@ -36,6 +37,18 @@ internal sealed class GlobalExceptionHandler(
                     Title = "Conflict",
                     Detail = "The resource conflicts with an existing record."
                 },
+            NotFoundException => new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Title = "Not Found",
+                Detail = exception.Message
+            },
+            DomainException => new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Business rule violation",
+                Detail = exception.Message
+            },
             InvalidCredentialsException => new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
