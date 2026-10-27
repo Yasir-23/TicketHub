@@ -1,8 +1,10 @@
 using FluentAssertions;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using TicketHub.Application.Common.Interfaces;
+using TicketHub.Application.Common.Models;
 using TicketHub.Application.Features.Bookings.CancelBooking;
 using TicketHub.Application.Features.Bookings.CheckoutBooking;
 using TicketHub.Application.Features.Events.GetEventSeatMap;
@@ -18,13 +20,18 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
 {
     private static readonly DateTime Now = TestDbContextFactory.UtcNow.UtcDateTime;
 
-    private readonly AppDbContext _dbContext = TestDbContextFactory.Create();
+    private readonly string _databaseName = Guid.NewGuid().ToString();
+    private readonly AppDbContext _dbContext;
     private readonly Mock<IPaymentGateway> _paymentGateway = new();
-    private readonly Guid _customerId = Guid.NewGuid();
+    private readonly Mock<ITicketFulfillmentChannel> _fulfillmentChannel = new();
+    private readonly User _customer = User.CreateCustomer("Jane Doe", "jane@example.com", "hash");
+    private Guid _customerId => _customer.Id;
     private Event _event = null!;
     private Event _eventUnder48Hours = null!;
     private Event _eventAt48Hours = null!;
     private Seat _seat = null!;
+
+    public BookingCommandHandlerTests() => _dbContext = TestDbContextFactory.Create(_databaseName);
 
     public async Task InitializeAsync()
     {
@@ -36,7 +43,7 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
         _eventUnder48Hours = CreateEvent(venue.Id, section.Id, Now.AddHours(47));
         _eventAt48Hours = CreateEvent(venue.Id, section.Id, Now.AddHours(48));
 
-        _dbContext.Users.Add(User.CreateCustomer("Jane Doe", "jane@example.com", "hash"));
+        _dbContext.Users.Add(_customer);
         _dbContext.Venues.Add(venue);
         _dbContext.Events.AddRange(_event, _eventUnder48Hours, _eventAt48Hours);
         await _dbContext.SaveChangesAsync();
@@ -122,6 +129,87 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_AfterSuccessfulPayment_PublishesFulfillmentMessageForCommittedBooking()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        SetupSuccessfulPayment();
+        TicketFulfillmentMessage? published = null;
+        BookingStatus? statusWhenPublished = null;
+        _fulfillmentChannel
+            .Setup(channel => channel.PublishAsync(It.IsAny<TicketFulfillmentMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<TicketFulfillmentMessage, CancellationToken>((message, _) =>
+            {
+                published = message;
+                // Read through a separate context: only committed state is visible there.
+                using var verificationContext = TestDbContextFactory.Create(_databaseName);
+                statusWhenPublished = verificationContext.Bookings.Single(b => b.Id == message.BookingId).Status;
+            })
+            .Returns(ValueTask.CompletedTask);
+
+        var response = await Checkout(holdId);
+
+        statusWhenPublished.Should().Be(BookingStatus.Confirmed);
+        published.Should().BeEquivalentTo(new TicketFulfillmentMessage(
+            response.BookingId,
+            _customerId,
+            "jane@example.com",
+            response.TicketNumber,
+            response.QrCodePayload,
+            _event.Title,
+            _event.StartDateUtc));
+    }
+
+    [Fact]
+    public async Task Checkout_WhenPaymentDeclined_DoesNotPublishFulfillmentMessage()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        _paymentGateway
+            .Setup(gateway => gateway.ChargeAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<long>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentGatewayResult(PaymentStatus.Failed, "sim_declined"));
+
+        var act = () => Checkout(holdId, paymentToken: "tok_fail");
+
+        await act.Should().ThrowAsync<PaymentFailedException>();
+        _fulfillmentChannel.Verify(
+            channel => channel.PublishAsync(It.IsAny<TicketFulfillmentMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Checkout_IdempotencyReplay_PublishesFulfillmentMessageOnlyOnce()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        SetupSuccessfulPayment();
+        var key = Guid.NewGuid().ToString();
+
+        await Checkout(holdId, key);
+        await Checkout(holdId, key);
+
+        _fulfillmentChannel.Verify(
+            channel => channel.PublishAsync(It.IsAny<TicketFulfillmentMessage>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Checkout_WhenFulfillmentChannelFails_StillReturnsConfirmedBooking()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        SetupSuccessfulPayment();
+        _fulfillmentChannel
+            .Setup(channel => channel.PublishAsync(It.IsAny<TicketFulfillmentMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(ValueTask.FromException(new InvalidOperationException("channel closed")));
+
+        var response = await Checkout(holdId);
+
+        response.Status.Should().Be(nameof(BookingStatus.Confirmed));
+        (await _dbContext.Bookings.SingleAsync()).Status.Should().Be(BookingStatus.Confirmed);
+    }
+
+    [Fact]
     public async Task CancelBooking_At48HourCutoffSucceedsAndReleasesSeat()
     {
         var booking = await CreateConfirmedBooking(_eventAt48Hours);
@@ -154,6 +242,15 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
         (await _dbContext.Bookings.SingleAsync(item => item.Id == booking.Id))
             .Status.Should().Be(BookingStatus.Confirmed);
     }
+
+    private void SetupSuccessfulPayment() =>
+        _paymentGateway
+            .Setup(gateway => gateway.ChargeAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<long>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentGatewayResult(PaymentStatus.Success, "sim_success"));
 
     private Event CreateEvent(Guid venueId, Guid sectionId, DateTime startDateUtc)
     {
@@ -207,7 +304,9 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
         new CheckoutBookingCommandHandler(
                 _dbContext,
                 _paymentGateway.Object,
-                new FixedTimeProvider(TestDbContextFactory.UtcNow))
+                _fulfillmentChannel.Object,
+                new FixedTimeProvider(TestDbContextFactory.UtcNow),
+                NullLogger<CheckoutBookingCommandHandler>.Instance)
             .Handle(
                 new CheckoutBookingCommand(
                     holdId,

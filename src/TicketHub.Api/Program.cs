@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration)
+    .AddBackgroundJobs(builder.Configuration)
     .AddApi();
 
 var app = builder.Build();

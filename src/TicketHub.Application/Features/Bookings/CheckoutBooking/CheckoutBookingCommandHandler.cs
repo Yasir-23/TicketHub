@@ -3,8 +3,10 @@ using FluentValidation;
 using FluentValidation.Results;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TicketHub.Application.Common.Exceptions;
 using TicketHub.Application.Common.Interfaces;
+using TicketHub.Application.Common.Models;
 using TicketHub.Domain.Entities;
 using TicketHub.Domain.Enums;
 using TicketHub.Domain.Exceptions;
@@ -14,7 +16,9 @@ namespace TicketHub.Application.Features.Bookings.CheckoutBooking;
 public sealed class CheckoutBookingCommandHandler(
     IAppDbContext dbContext,
     IPaymentGateway paymentGateway,
-    TimeProvider timeProvider)
+    ITicketFulfillmentChannel fulfillmentChannel,
+    TimeProvider timeProvider,
+    ILogger<CheckoutBookingCommandHandler> logger)
     : IRequestHandler<CheckoutBookingCommand, CheckoutBookingResponse>
 {
     public async Task<CheckoutBookingResponse> Handle(
@@ -135,7 +139,44 @@ public sealed class CheckoutBookingCommandHandler(
         booking.Confirm(confirmedAtUtc);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        await PublishFulfillmentAsync(booking, @event, cancellationToken);
+
         return ToResponse(booking, confirmedAtUtc);
+    }
+
+    /// <summary>
+    /// FR-JOB-02: ticket rendering and email delivery happen off the request path. The booking is already
+    /// committed and paid for, so a fulfillment hand-off failure is logged rather than failing checkout.
+    /// </summary>
+    private async Task PublishFulfillmentAsync(Booking booking, Event @event, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var email = await dbContext.Users
+                .AsNoTracking()
+                .Where(user => user.Id == booking.CustomerId)
+                .Select(user => user.Email)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            await fulfillmentChannel.PublishAsync(
+                new TicketFulfillmentMessage(
+                    booking.Id,
+                    booking.CustomerId,
+                    email ?? string.Empty,
+                    booking.TicketNumber,
+                    booking.QrCodePayload,
+                    @event.Title,
+                    @event.StartDateUtc),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(
+                exception,
+                "Booking {BookingId} ({TicketNumber}) was confirmed but could not be queued for ticket fulfillment",
+                booking.Id,
+                booking.TicketNumber);
+        }
     }
 
     private async Task<PaymentTransaction?> FindTransactionAsync(string idempotencyKey, CancellationToken cancellationToken) =>

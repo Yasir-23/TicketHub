@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Infrastructure.Authentication;
+using TicketHub.Infrastructure.BackgroundJobs;
 using TicketHub.Infrastructure.Payments;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.Infrastructure.Persistence.Seeding;
@@ -56,6 +57,38 @@ public static class DependencyInjection
 
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasher>(new BCryptPasswordHasher());
+
+        return services;
+    }
+
+    /// <summary>
+    /// SDD section 6: the ticket fulfillment channel plus the hosted workers that drain it, reap expired holds
+    /// and send event reminders.
+    /// </summary>
+    public static IServiceCollection AddBackgroundJobs(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+
+        services.AddOptions<ExpiredHoldReaperOptions>()
+            .Bind(configuration.GetSection(ExpiredHoldReaperOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddOptions<TicketFulfillmentOptions>()
+            .Bind(configuration.GetSection(TicketFulfillmentOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddOptions<EventReminderOptions>()
+            .Bind(configuration.GetSection(EventReminderOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddSingleton<ITicketFulfillmentChannel, TicketFulfillmentChannel>();
+        services.AddScoped<ExpiredHoldReaper>();
+        services.AddScoped<EventReminderDispatcher>();
+
+        services.AddHostedService<TicketFulfillmentBackgroundWorker>();
+        services.AddHostedService<ExpiredHoldReaperWorker>();
+        services.AddHostedService<EventReminderBackgroundWorker>();
 
         return services;
     }

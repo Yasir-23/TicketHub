@@ -34,6 +34,9 @@ public sealed class Booking : BaseEntity
 
     public DateTime? CancelledAtUtc { get; private set; }
 
+    /// <summary>When the 24-hour event reminder was dispatched (FR-JOB-03); null until sent, so it is sent once.</summary>
+    public DateTime? ReminderSentAtUtc { get; private set; }
+
     public IReadOnlyCollection<BookingItem> BookingItems => _bookingItems;
 
     public IReadOnlyCollection<PaymentTransaction> PaymentTransactions => _paymentTransactions;
@@ -90,5 +93,15 @@ public sealed class Booking : BaseEntity
 
         Status = BookingStatus.Cancelled;
         CancelledAtUtc = cancelledAtUtc;
+    }
+
+    public void MarkReminderSent(DateTime sentAtUtc)
+    {
+        if (Status != BookingStatus.Confirmed)
+        {
+            throw new DomainException($"Booking '{Id}' cannot be reminded from {Status}.");
+        }
+
+        ReminderSentAtUtc ??= sentAtUtc;
     }
 }

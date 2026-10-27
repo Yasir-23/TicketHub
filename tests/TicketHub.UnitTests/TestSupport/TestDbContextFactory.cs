@@ -10,12 +10,16 @@ internal static class TestDbContextFactory
 
     public static AppDbContext Create(string? databaseName = null)
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName ?? Guid.NewGuid().ToString())
-            // The in-memory provider has no transactions; handlers that open one still run correctly.
-            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        var builder = new DbContextOptionsBuilder<AppDbContext>();
+        Configure(builder, databaseName ?? Guid.NewGuid().ToString());
 
-        return new AppDbContext(options, new FixedTimeProvider(UtcNow));
+        return new AppDbContext(builder.Options, new FixedTimeProvider(UtcNow));
     }
+
+    /// <summary>Shared by <see cref="Create"/> and DI-registered contexts (e.g. for background worker tests).</summary>
+    public static void Configure(DbContextOptionsBuilder builder, string databaseName) =>
+        builder
+            .UseInMemoryDatabase(databaseName)
+            // The in-memory provider has no transactions; handlers that open one still run correctly.
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning));
 }
