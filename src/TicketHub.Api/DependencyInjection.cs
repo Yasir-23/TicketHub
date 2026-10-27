@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -80,7 +81,37 @@ public static class DependencyInjection
 
         services.AddSwaggerGen(options =>
         {
-            options.SwaggerDoc("v1", new OpenApiInfo { Title = "TicketHub API", Version = "v1" });
+            options.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Title = "TicketHub Enterprise Ticketing API",
+                Version = "v1",
+                Description = "High-concurrency Event Ticket Booking System featuring zero double-booking guarantees, 10-minute hold engines, resilient payments, and real-time executive reporting.",
+                Contact = new OpenApiContact { Name = "TicketHub Engineering Team" }
+            });
+
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                options.IncludeXmlComments(xmlPath);
+            }
+
+            options.TagActionsBy(description =>
+            {
+                if (description.RelativePath?.Contains("/holds", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    return ["Holds"];
+                }
+
+                if (description.RelativePath?.StartsWith("health", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    return ["Health"];
+                }
+
+                var controller = description.ActionDescriptor.RouteValues["controller"];
+                return [controller ?? "API"];
+            });
+            options.DocumentFilter<SwaggerTagDescriptionsDocumentFilter>();
 
             options.AddSecurityDefinition(schemeId, new OpenApiSecurityScheme
             {
