@@ -30,5 +30,31 @@ services:
       retries: 5
     restart: always
 
+  tickethub_api:
+    build:
+      context: .
+      dockerfile: src/TicketHub.Api/Dockerfile
+    container_name: tickethub_api
+    ports:
+      # Host port 5001 avoids clashing with other local services on 5000.
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=tickethub_postgres;Port=5432;Database=tickethub;Username=postgres;Password=postgres
+      - ConnectionStrings__Redis=tickethub_redis:6379
+      - Jwt__SigningKey=SuperSecretTicketHubEnterpriseKey2026!MustBe32CharsLong
+      - Jwt__Issuer=TicketHub
+      - Jwt__Audience=TicketHubAudience
+    depends_on:
+      tickethub_postgres:
+        condition: service_healthy
+      tickethub_redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   tickethub_pgdata:

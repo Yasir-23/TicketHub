@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using TicketHub.Api.Middleware;
+using TicketHub.Api.Networking;
+using TicketHub.Api.Observability;
 using TicketHub.Api.RateLimiting;
 using TicketHub.Infrastructure.Authentication;
 
@@ -34,6 +36,8 @@ public static class DependencyInjection
         services.AddJwtAuthentication();
         services.AddAuthorization();
         services.AddTicketHubRateLimiting(configuration);
+        services.AddTicketHubForwardedHeaders(configuration);
+        services.AddTicketHubHealthChecks(configuration);
 
         services.AddEndpointsApiExplorer();
         services.AddSwaggerWithBearerAuth();

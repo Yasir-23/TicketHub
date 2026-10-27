@@ -1,9 +1,15 @@
+using Serilog;
 using TicketHub.Api;
+using TicketHub.Api.Observability;
 using TicketHub.Application;
 using TicketHub.Infrastructure;
+using TicketHub.Infrastructure.Persistence;
 using TicketHub.Infrastructure.Persistence.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, services, logger) =>
+    logger.ConfigureTicketHubLogging(context.Configuration, services));
 
 builder.Services
     .AddApplication()
@@ -13,6 +19,11 @@ builder.Services
 
 var app = builder.Build();
 
+// First, so everything downstream (rate limiting, logging, HTTPS redirection) sees the real client.
+app.UseForwardedHeaders();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseTicketHubRequestLogging();
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -21,6 +32,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
+        options.RoutePrefix = "swagger";
         options.DisplayRequestDuration();
     });
 }
@@ -34,7 +46,9 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers();
+app.MapTicketHubHealthChecks();
 
+await app.Services.ApplyDatabaseMigrationsAsync();
 await app.Services.SeedAdminUserAsync();
 
 await app.RunAsync();

@@ -1,78 +1,17 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
-using TicketHub.Application.Common.Interfaces;
 using TicketHub.Application.Features.Reports.GetEventOccupancyReport;
 using TicketHub.Domain.Entities;
 using TicketHub.Domain.Enums;
-using TicketHub.Infrastructure.BackgroundJobs;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.UnitTests.TestSupport;
 
 namespace TicketHub.UnitTests.Api;
 
-/// <summary>
-/// Runs the real API pipeline (JWT bearer, role authorization, controllers, ProblemDetails) with an in-memory
-/// database and without background workers.
-/// </summary>
-public sealed class ReportsApiFactory : WebApplicationFactory<Program>
-{
-    private readonly string _databaseName = Guid.NewGuid().ToString();
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.UseEnvironment("Testing");
-        builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                ["Jwt:SigningKey"] = "reports-authorization-tests-signing-key-0123456789",
-                ["Jwt:Issuer"] = "TicketHub",
-                ["Jwt:Audience"] = "TicketHub.Api"
-            }));
-
-        builder.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<DbContextOptions<AppDbContext>>();
-            services.AddDbContext<AppDbContext>(options => TestDbContextFactory.Configure(options, _databaseName));
-
-            var workers = services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                    && d.ImplementationType?.Namespace == typeof(ExpiredHoldReaperWorker).Namespace)
-                .ToList();
-            foreach (var worker in workers)
-            {
-                services.Remove(worker);
-            }
-        });
-    }
-
-    public HttpClient CreateClientFor(UserRole? role)
-    {
-        var client = CreateClient();
-        if (role is { } userRole)
-        {
-            var user = userRole == UserRole.Admin
-                ? User.CreateAdmin("Ada Admin", "admin@example.com", "hash")
-                : User.CreateCustomer("Cal Customer", "customer@example.com", "hash");
-            var token = Services.GetRequiredService<IJwtTokenService>().CreateAccessToken(user).Token;
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
-
-        return client;
-    }
-}
-
-public sealed class ReportsAuthorizationTests(ReportsApiFactory factory) : IClassFixture<ReportsApiFactory>
+public sealed class ReportsAuthorizationTests(TicketHubApiFactory factory) : IClassFixture<TicketHubApiFactory>
 {
     public static TheoryData<string> Endpoints => new()
     {

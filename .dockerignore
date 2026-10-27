@@ -1,0 +1,18 @@
+# Build outputs: host restore/build state (e.g. Windows paths in obj/) breaks the Linux build.
+**/bin/
+**/obj/
+
+# Never bake developer secrets (dev JWT key, seed admin password) into an image.
+**/appsettings.Development.json
+**/secrets.json
+.env
+**/*.user
+
+# Not needed to build the API.
+.git/
+.vs/
+.vscode/
+.idea/
+docs/
+tests/
+**/TestResults/
