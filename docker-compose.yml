@@ -45,6 +45,8 @@ services:
       - Jwt__SigningKey=SuperSecretTicketHubEnterpriseKey2026!MustBe32CharsLong
       - Jwt__Issuer=TicketHub
       - Jwt__Audience=TicketHubAudience
+      - SeedAdmin__Email=${TICKETHUB_ADMIN_EMAIL:-admin@tickethub.com}
+      - SeedAdmin__Password=${TICKETHUB_ADMIN_PASSWORD:-AdminSecurePassword123!}
     depends_on:
       tickethub_postgres:
         condition: service_healthy
