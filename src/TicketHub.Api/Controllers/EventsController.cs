@@ -1,8 +1,10 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TicketHub.Api.Contracts;
 using TicketHub.Api.Extensions;
+using TicketHub.Api.RateLimiting;
 using TicketHub.Application.Common.Models;
 using TicketHub.Application.Features.Holds.HoldSeats;
 using TicketHub.Application.Features.Events.CreateEvent;
@@ -41,6 +43,7 @@ public sealed class EventsController(ISender sender) : ControllerBase
 
     [HttpPost("{id:guid}/holds")]
     [Authorize(Roles = nameof(UserRole.Customer))]
+    [EnableRateLimiting(RateLimitPolicies.Booking)]
     [ProducesResponseType<HoldSeatsResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -48,6 +51,7 @@ public sealed class EventsController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> HoldSeats(Guid id, HoldSeatsRequest request, CancellationToken cancellationToken)
     {
         if (!User.TryGetUserId(out var customerId))

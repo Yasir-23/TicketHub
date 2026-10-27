@@ -30,6 +30,12 @@ internal sealed class GlobalExceptionHandler(
                 Title = "Conflict",
                 Detail = exception.Message
             },
+            DbUpdateConcurrencyException => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Conflict",
+                Detail = "The resource was modified by another request. Please retry."
+            },
             DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } =>
                 new ProblemDetails
                 {

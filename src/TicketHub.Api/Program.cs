@@ -9,7 +9,7 @@ builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration)
     .AddBackgroundJobs(builder.Configuration)
-    .AddApi();
+    .AddApi(builder.Configuration);
 
 var app = builder.Build();
 
@@ -29,6 +29,9 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// After authentication, so booking-policy can partition by user.
+app.UseRateLimiter();
 
 app.MapControllers();
 

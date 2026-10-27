@@ -8,7 +8,10 @@ using TicketHub.Domain.Entities;
 
 namespace TicketHub.Application.Features.Events.CreateEvent;
 
-public sealed class CreateEventCommandHandler(IAppDbContext dbContext, TimeProvider timeProvider)
+public sealed class CreateEventCommandHandler(
+    IAppDbContext dbContext,
+    ICatalogCacheGeneration catalogGeneration,
+    TimeProvider timeProvider)
     : IRequestHandler<CreateEventCommand, CreateEventResponse>
 {
     public async Task<CreateEventResponse> Handle(CreateEventCommand request, CancellationToken cancellationToken)
@@ -52,6 +55,9 @@ public sealed class CreateEventCommandHandler(IAppDbContext dbContext, TimeProvi
 
         dbContext.Events.Add(@event);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // After the commit, so a reader can never cache the new generation without this event in it.
+        await catalogGeneration.IncrementAsync(cancellationToken);
 
         return new CreateEventResponse(@event.Id, @event.Title, @event.Category, @event.StartDateUtc);
     }

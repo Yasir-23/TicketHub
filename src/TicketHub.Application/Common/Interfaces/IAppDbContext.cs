@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using TicketHub.Domain.Entities;
 
@@ -28,6 +29,9 @@ public interface IAppDbContext
 
     /// <summary>Used by handlers that need an explicit transaction (e.g. the seat hold hot path).</summary>
     DatabaseFacade Database { get; }
+
+    /// <summary>Used to discard a failed unit of work (e.g. after an optimistic concurrency conflict).</summary>
+    ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -19,9 +19,12 @@ internal sealed class SeatHoldConfiguration : IEntityTypeConfiguration<SeatHold>
         builder.HasKey(h => h.Id);
         builder.Property(h => h.Id).ValueGeneratedNever();
 
+        // Optimistic concurrency: every status transition is an UPDATE ... WHERE "Status" = <original>, so a
+        // checkout cannot convert a hold the reaper (or a rival hold request) expired while payment was in flight.
         builder.Property(h => h.Status)
             .HasConversion<int>()
-            .IsRequired();
+            .IsRequired()
+            .IsConcurrencyToken();
 
         builder.HasIndex(h => new { h.EventId, h.SeatId })
             .HasDatabaseName(ActiveHoldIndexName)

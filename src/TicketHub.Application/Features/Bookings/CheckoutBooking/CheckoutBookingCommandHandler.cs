@@ -39,7 +39,7 @@ public sealed class CheckoutBookingCommandHandler(
         var existingTransaction = await FindTransactionAsync(request.IdempotencyKey, cancellationToken);
         if (existingTransaction is not null)
         {
-            return ReplayOrThrow(existingTransaction, request.CustomerId);
+            return ReplayOrThrow(existingTransaction, request);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -130,14 +130,28 @@ public sealed class CheckoutBookingCommandHandler(
             throw new PaymentFailedException();
         }
 
+        // Payment can take up to the 15 s resilience budget, so re-check the holds at confirmation time.
         var confirmedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        if (holds.Any(hold => !hold.IsActiveAt(confirmedAtUtc)))
+        {
+            await VoidLapsedBookingAsync(paymentTransaction.Id, paymentResult, request.HoldId, cancellationToken);
+        }
+
         foreach (var hold in holds)
         {
             hold.ConvertToBooking(booking.Id);
         }
 
         booking.Confirm(confirmedAtUtc);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A hold left Active in the database (reaped or released) after we loaded it.
+            await VoidLapsedBookingAsync(paymentTransaction.Id, paymentResult, request.HoldId, cancellationToken);
+        }
 
         await PublishFulfillmentAsync(booking, @event, cancellationToken);
 
@@ -179,20 +193,53 @@ public sealed class CheckoutBookingCommandHandler(
         }
     }
 
+    /// <summary>
+    /// The seats are no longer ours, so the booking cannot be confirmed even though payment was captured:
+    /// void it, flag the charge for refund, and report the hold as expired (HTTP 410).
+    /// </summary>
+    private async Task VoidLapsedBookingAsync(
+        Guid paymentTransactionId,
+        PaymentGatewayResult paymentResult,
+        Guid holdId,
+        CancellationToken cancellationToken)
+    {
+        // Drop the half-applied confirmation, then record the captured payment and the voided booking together.
+        dbContext.ChangeTracker.Clear();
+
+        var transaction = await dbContext.PaymentTransactions
+            .Include(t => t.Booking)
+            .SingleAsync(t => t.Id == paymentTransactionId, cancellationToken);
+        transaction.Complete(paymentResult.Status, paymentResult.ProviderReference);
+        var booking = transaction.Booking;
+        booking.Void(timeProvider.GetUtcNow().UtcDateTime);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogError(
+            "Seat hold {HoldId} lapsed during payment; booking {BookingId} voided. Refund required for {AmountCents} cents (provider reference {ProviderReference})",
+            holdId,
+            booking.Id,
+            booking.TotalAmountCents,
+            paymentResult.ProviderReference);
+
+        throw new HoldExpiredException(holdId);
+    }
+
     private async Task<PaymentTransaction?> FindTransactionAsync(string idempotencyKey, CancellationToken cancellationToken) =>
         await dbContext.PaymentTransactions
             .Include(transaction => transaction.Booking)
             .SingleOrDefaultAsync(transaction => transaction.IdempotencyKey == idempotencyKey, cancellationToken);
 
-    private static CheckoutBookingResponse ReplayOrThrow(PaymentTransaction transaction, Guid customerId)
+    private static CheckoutBookingResponse ReplayOrThrow(PaymentTransaction transaction, CheckoutBookingCommand request)
     {
-        if (transaction.Booking.CustomerId != customerId)
+        if (transaction.Booking.CustomerId != request.CustomerId)
         {
             throw new ConflictException("The Idempotency-Key has already been used.");
         }
 
         return transaction.Status switch
         {
+            PaymentStatus.Success when transaction.Booking.Status != BookingStatus.Confirmed =>
+                throw new HoldExpiredException(request.HoldId),
             PaymentStatus.Success => ToResponse(
                 transaction.Booking,
                 transaction.Booking.ConfirmedAtUtc ?? transaction.Booking.CreatedAtUtc),

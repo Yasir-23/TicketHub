@@ -5,6 +5,7 @@ using TicketHub.Application.Common.Exceptions;
 using TicketHub.Application.Features.Events.CreateEvent;
 using TicketHub.Domain.Entities;
 using TicketHub.Domain.Enums;
+using TicketHub.Infrastructure.Caching;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.UnitTests.TestSupport;
 
@@ -113,7 +114,7 @@ public sealed class CreateEventCommandTests
     }
 
     private static CreateEventCommandHandler CreateHandler(AppDbContext dbContext) =>
-        new(dbContext, new FixedTimeProvider(TestDbContextFactory.UtcNow));
+        new(dbContext, new InMemoryCatalogCacheGeneration(), new FixedTimeProvider(TestDbContextFactory.UtcNow));
 
     private static CreateEventCommand ValidCommand(Guid venueId, Guid sectionId) => new(
         venueId,

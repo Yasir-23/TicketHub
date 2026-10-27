@@ -2,6 +2,7 @@ using FluentAssertions;
 using TicketHub.Application.Features.Events.GetEvents;
 using TicketHub.Domain.Entities;
 using TicketHub.Domain.Enums;
+using TicketHub.Infrastructure.Caching;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.UnitTests.TestSupport;
 
@@ -126,7 +127,8 @@ public sealed class GetEventsQueryTests : IAsyncLifetime
     }
 
     private Task<TicketHub.Application.Common.Models.PagedResult<EventSummaryDto>> Handle(GetEventsQuery query) =>
-        new GetEventsQueryHandler(_dbContext).Handle(query, CancellationToken.None);
+        new GetEventsQueryHandler(_dbContext, TestCache.Create(), new InMemoryCatalogCacheGeneration())
+            .Handle(query, CancellationToken.None);
 
     private Event AddEvent(
         Venue venue,

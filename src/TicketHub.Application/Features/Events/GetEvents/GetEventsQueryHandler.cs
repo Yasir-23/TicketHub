@@ -1,15 +1,30 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using TicketHub.Application.Common.Caching;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Application.Common.Models;
 using TicketHub.Domain.Common;
 
 namespace TicketHub.Application.Features.Events.GetEvents;
 
-public sealed class GetEventsQueryHandler(IAppDbContext dbContext)
+public sealed class GetEventsQueryHandler(
+    IAppDbContext dbContext,
+    ICacheService cache,
+    ICatalogCacheGeneration catalogGeneration)
     : IRequestHandler<GetEventsQuery, PagedResult<EventSummaryDto>>
 {
     public async Task<PagedResult<EventSummaryDto>> Handle(GetEventsQuery request, CancellationToken cancellationToken)
+    {
+        var generation = await catalogGeneration.GetCurrentAsync(cancellationToken);
+
+        return await cache.GetOrSetAsync(
+            CacheKeys.CatalogPage(generation, request),
+            () => LoadPageAsync(request, cancellationToken),
+            CacheKeys.CatalogTtl,
+            cancellationToken);
+    }
+
+    private async Task<PagedResult<EventSummaryDto>> LoadPageAsync(GetEventsQuery request, CancellationToken cancellationToken)
     {
         var query = dbContext.Events.AsNoTracking();
 

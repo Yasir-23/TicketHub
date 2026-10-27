@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using TicketHub.Application.Common.Caching;
 using TicketHub.Application.Common.Exceptions;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Domain.Entities;
@@ -7,10 +8,17 @@ using TicketHub.Domain.Enums;
 
 namespace TicketHub.Application.Features.Events.GetEventSeatMap;
 
-public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext, TimeProvider timeProvider)
+public sealed class GetEventSeatMapQueryHandler(IAppDbContext dbContext, ICacheService cache, TimeProvider timeProvider)
     : IRequestHandler<GetEventSeatMapQuery, EventSeatMapResponse>
 {
-    public async Task<EventSeatMapResponse> Handle(GetEventSeatMapQuery request, CancellationToken cancellationToken)
+    public Task<EventSeatMapResponse> Handle(GetEventSeatMapQuery request, CancellationToken cancellationToken) =>
+        cache.GetOrSetAsync(
+            CacheKeys.SeatMap(request.EventId),
+            () => LoadSeatMapAsync(request, cancellationToken),
+            CacheKeys.SeatMapTtl,
+            cancellationToken);
+
+    private async Task<EventSeatMapResponse> LoadSeatMapAsync(GetEventSeatMapQuery request, CancellationToken cancellationToken)
     {
         if (!await dbContext.Events.AnyAsync(e => e.Id == request.EventId, cancellationToken))
         {

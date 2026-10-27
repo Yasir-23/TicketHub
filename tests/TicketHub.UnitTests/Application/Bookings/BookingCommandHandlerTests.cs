@@ -210,6 +210,71 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_WhenHoldLapsesDuringSlowPayment_VoidsBookingInsteadOfConverting()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        var clock = new MutableTimeProvider(TestDbContextFactory.UtcNow);
+        SetupSuccessfulPayment(onCharge: () => clock.UtcNow = clock.UtcNow.AddMinutes(10));
+
+        var act = () => Checkout(holdId, timeProvider: clock);
+
+        await act.Should().ThrowAsync<HoldExpiredException>();
+        await AssertVoidedWithCapturedPayment();
+    }
+
+    [Fact]
+    public async Task Checkout_WhenHoldIsReapedDuringPayment_ConcurrencyTokenBlocksConversion()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        SetupSuccessfulPayment(onCharge: () =>
+        {
+            // The reaper (or a rival hold request) commits from its own context while payment is in flight.
+            using var rival = TestDbContextFactory.Create(_databaseName);
+            rival.SeatHolds.Single(hold => hold.HoldGroupId == holdId).Expire();
+            rival.SaveChanges();
+        });
+
+        var act = () => Checkout(holdId);
+
+        await act.Should().ThrowAsync<HoldExpiredException>();
+        await AssertVoidedWithCapturedPayment(expectedHoldStatus: HoldStatus.Expired);
+    }
+
+    [Fact]
+    public async Task Checkout_ReplayOfVoidedBooking_ReportsExpiryWithoutChargingAgain()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        var clock = new MutableTimeProvider(TestDbContextFactory.UtcNow);
+        SetupSuccessfulPayment(onCharge: () => clock.UtcNow = clock.UtcNow.AddMinutes(10));
+        var key = Guid.NewGuid().ToString();
+        await FluentActions.Awaiting(() => Checkout(holdId, key, timeProvider: clock))
+            .Should().ThrowAsync<HoldExpiredException>();
+
+        var replay = () => Checkout(holdId, key, timeProvider: clock);
+
+        await replay.Should().ThrowAsync<HoldExpiredException>();
+        _paymentGateway.Verify(gateway => gateway.ChargeAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<long>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Checkout_WithHoldStillActiveAfterPayment_Converts()
+    {
+        var holdId = await CreateHold(_event, Now.AddMinutes(10));
+        var clock = new MutableTimeProvider(TestDbContextFactory.UtcNow);
+        SetupSuccessfulPayment(onCharge: () => clock.UtcNow = clock.UtcNow.AddMinutes(9));
+
+        var response = await Checkout(holdId, timeProvider: clock);
+
+        response.Status.Should().Be(nameof(BookingStatus.Confirmed));
+        await using var verification = TestDbContextFactory.Create(_databaseName);
+        (await verification.SeatHolds.SingleAsync()).Status.Should().Be(HoldStatus.ConvertedToBooking);
+    }
+
+    [Fact]
     public async Task CancelBooking_At48HourCutoffSucceedsAndReleasesSeat()
     {
         var booking = await CreateConfirmedBooking(_eventAt48Hours);
@@ -223,6 +288,7 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
 
         var seatMap = await new GetEventSeatMapQueryHandler(
                 _dbContext,
+                TestCache.Create(),
                 new FixedTimeProvider(TestDbContextFactory.UtcNow))
             .Handle(new GetEventSeatMapQuery(_eventAt48Hours.Id), CancellationToken.None);
         seatMap.Sections.SelectMany(section => section.Seats)
@@ -243,14 +309,31 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
             .Status.Should().Be(BookingStatus.Confirmed);
     }
 
-    private void SetupSuccessfulPayment() =>
+    private void SetupSuccessfulPayment(Action? onCharge = null) =>
         _paymentGateway
             .Setup(gateway => gateway.ChargeAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<long>(),
                 It.IsAny<CancellationToken>()))
+            .Callback(() => onCharge?.Invoke())
             .ReturnsAsync(new PaymentGatewayResult(PaymentStatus.Success, "sim_success"));
+
+    private async Task AssertVoidedWithCapturedPayment(HoldStatus expectedHoldStatus = HoldStatus.Active)
+    {
+        await using var verification = TestDbContextFactory.Create(_databaseName);
+        var booking = await verification.Bookings.SingleAsync();
+        booking.Status.Should().Be(BookingStatus.Cancelled);
+        booking.CancelledAtUtc.Should().NotBeNull();
+        (await verification.PaymentTransactions.SingleAsync()).Status
+            .Should().Be(PaymentStatus.Success, "the captured charge must stay on record for the refund");
+        var hold = await verification.SeatHolds.SingleAsync();
+        hold.Status.Should().Be(expectedHoldStatus);
+        hold.BookingId.Should().BeNull();
+        _fulfillmentChannel.Verify(
+            channel => channel.PublishAsync(It.IsAny<TicketFulfillmentMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
 
     private Event CreateEvent(Guid venueId, Guid sectionId, DateTime startDateUtc)
     {
@@ -300,12 +383,13 @@ public sealed class BookingCommandHandlerTests : IAsyncLifetime
     private Task<TicketHub.Application.Features.Bookings.CheckoutBooking.CheckoutBookingResponse> Checkout(
         Guid holdId,
         string? idempotencyKey = null,
-        string paymentToken = "tok_visa_valid") =>
+        string paymentToken = "tok_visa_valid",
+        TimeProvider? timeProvider = null) =>
         new CheckoutBookingCommandHandler(
                 _dbContext,
                 _paymentGateway.Object,
                 _fulfillmentChannel.Object,
-                new FixedTimeProvider(TestDbContextFactory.UtcNow),
+                timeProvider ?? new FixedTimeProvider(TestDbContextFactory.UtcNow),
                 NullLogger<CheckoutBookingCommandHandler>.Instance)
             .Handle(
                 new CheckoutBookingCommand(

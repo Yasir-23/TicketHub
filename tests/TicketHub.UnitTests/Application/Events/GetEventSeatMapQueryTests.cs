@@ -91,7 +91,7 @@ public sealed class GetEventSeatMapQueryTests
     }
 
     private static GetEventSeatMapQueryHandler CreateHandler(TicketHub.Infrastructure.Persistence.AppDbContext dbContext) =>
-        new(dbContext, new FixedTimeProvider(TestDbContextFactory.UtcNow));
+        new(dbContext, TestCache.Create(), new FixedTimeProvider(TestDbContextFactory.UtcNow));
 
     private static Event CreatePricedEvent(Venue venue, Section section, string title)
     {

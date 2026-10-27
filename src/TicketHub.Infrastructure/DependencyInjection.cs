@@ -1,11 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TicketHub.Application.Common.Interfaces;
 using TicketHub.Infrastructure.Authentication;
+using StackExchange.Redis;
 using TicketHub.Infrastructure.BackgroundJobs;
+using TicketHub.Infrastructure.Caching;
 using TicketHub.Infrastructure.Payments;
 using TicketHub.Infrastructure.Persistence;
 using TicketHub.Infrastructure.Persistence.Seeding;
@@ -15,6 +18,7 @@ namespace TicketHub.Infrastructure;
 public static class DependencyInjection
 {
     public const string ConnectionStringName = "DefaultConnection";
+    public const string RedisConnectionStringName = "Redis";
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -48,6 +52,8 @@ public static class DependencyInjection
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
             });
 
+        services.AddCaching(configuration);
+
         services.Configure<AdminSeedOptions>(configuration.GetSection(AdminSeedOptions.SectionName));
 
         services.AddOptions<JwtOptions>()
@@ -57,6 +63,41 @@ public static class DependencyInjection
 
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasher>(new BCryptPasswordHasher());
+
+        return services;
+    }
+
+    /// <summary>
+    /// SDD section 7: Redis-backed distributed cache and catalog generation counter sharing one multiplexer.
+    /// Without a Redis connection string (e.g. isolated tests), falls back to a single-process cache.
+    /// </summary>
+    private static IServiceCollection AddCaching(this IServiceCollection services, IConfiguration configuration)
+    {
+        var redisConnectionString = configuration.GetConnectionString(RedisConnectionStringName);
+
+        if (string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            services.AddDistributedMemoryCache();
+            services.AddSingleton<ICatalogCacheGeneration, InMemoryCatalogCacheGeneration>();
+        }
+        else
+        {
+            services.AddSingleton<IConnectionMultiplexer>(_ =>
+            {
+                var options = ConfigurationOptions.Parse(redisConnectionString);
+                // Keep the API serving (straight from PostgreSQL) while Redis is down; reconnect in the background.
+                options.AbortOnConnectFail = false;
+                return ConnectionMultiplexer.Connect(options);
+            });
+            services.AddStackExchangeRedisCache(_ => { });
+            services.AddOptions<RedisCacheOptions>()
+                .Configure<IServiceProvider>((options, provider) =>
+                    options.ConnectionMultiplexerFactory = () =>
+                        Task.FromResult(provider.GetRequiredService<IConnectionMultiplexer>()));
+            services.AddSingleton<ICatalogCacheGeneration, RedisCatalogCacheGeneration>();
+        }
+
+        services.AddSingleton<ICacheService, RedisCacheService>();
 
         return services;
     }

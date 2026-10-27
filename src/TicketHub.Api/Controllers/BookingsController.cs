@@ -1,8 +1,10 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TicketHub.Api.Contracts;
 using TicketHub.Api.Extensions;
+using TicketHub.Api.RateLimiting;
 using TicketHub.Application.Features.Bookings.CancelBooking;
 using TicketHub.Application.Features.Bookings.CheckoutBooking;
 using TicketHub.Application.Features.Bookings.GetMyBookings;
@@ -18,6 +20,7 @@ namespace TicketHub.Api.Controllers;
 public sealed class BookingsController(ISender sender) : ControllerBase
 {
     [HttpPost("checkout")]
+    [EnableRateLimiting(RateLimitPolicies.Booking)]
     [ProducesResponseType<CheckoutBookingResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status402PaymentRequired)]
@@ -25,6 +28,7 @@ public sealed class BookingsController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status410Gone)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Checkout(
         [FromBody] CheckoutBookingRequest request,
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,

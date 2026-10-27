@@ -79,6 +79,21 @@ public sealed class Booking : BaseEntity
         ConfirmedAtUtc = confirmedAtUtc;
     }
 
+    /// <summary>
+    /// Abandons a booking whose payment cannot be honoured (e.g. its seat hold lapsed while the payment was in
+    /// flight). Any captured payment must be refunded by the caller.
+    /// </summary>
+    public void Void(DateTime voidedAtUtc)
+    {
+        if (Status != BookingStatus.PendingPayment)
+        {
+            throw new DomainException($"Booking '{Id}' cannot be voided from {Status}.");
+        }
+
+        Status = BookingStatus.Cancelled;
+        CancelledAtUtc = voidedAtUtc;
+    }
+
     public void Cancel(DateTime cancelledAtUtc)
     {
         if (Status == BookingStatus.Cancelled)

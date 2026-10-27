@@ -108,7 +108,7 @@ public sealed class ExpiredHoldReaperTests : IAsyncLifetime
 
         (await StatusOf(live)).Should().Be(HoldStatus.Active);
 
-        var seatMap = await new GetEventSeatMapQueryHandler(_dbContext, _timeProvider)
+        var seatMap = await new GetEventSeatMapQueryHandler(_dbContext, TestCache.Create(), _timeProvider)
             .Handle(new GetEventSeatMapQuery(_event.Id), CancellationToken.None);
         var statuses = seatMap.Sections.SelectMany(section => section.Seats).ToDictionary(seat => seat.SeatId, seat => seat.Status);
         _seats.Take(5).Should().OnlyContain(seat => statuses[seat.Id] == SeatStatus.Available);

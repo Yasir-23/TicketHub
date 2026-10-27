@@ -6,13 +6,14 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using TicketHub.Api.Middleware;
+using TicketHub.Api.RateLimiting;
 using TicketHub.Infrastructure.Authentication;
 
 namespace TicketHub.Api;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddApi(this IServiceCollection services)
+    public static IServiceCollection AddApi(this IServiceCollection services, IConfiguration configuration)
     {
         // Enums travel as names ("Concert", "Available"), matching docs/API.md.
         services.AddControllers()
@@ -32,6 +33,7 @@ public static class DependencyInjection
 
         services.AddJwtAuthentication();
         services.AddAuthorization();
+        services.AddTicketHubRateLimiting(configuration);
 
         services.AddEndpointsApiExplorer();
         services.AddSwaggerWithBearerAuth();

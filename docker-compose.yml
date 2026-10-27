@@ -17,5 +17,18 @@ services:
       timeout: 5s
       retries: 5
 
+  tickethub_redis:
+    image: redis:7-alpine
+    container_name: tickethub_redis
+    ports:
+      # Host port 6380 avoids clashing with other local Redis instances on 6379.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
+
 volumes:
   tickethub_pgdata:
